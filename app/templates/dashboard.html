@@ -1,0 +1,480 @@
+{% extends "base.html" %}
+
+{% block title %}Painel | Sistema de Alertas ERP{% endblock %}
+
+{% block body %}
+<header class="topbar">
+    <div class="topbar-inner">
+        <div class="brand-box">
+            <img src="{{ logo_href }}" alt="Betina Soluções em Limpeza" class="brand-logo-img">
+            <div>
+                <div class="eyebrow">Sistema de Alertas ERP</div>
+                <h1>Painel administrativo</h1>
+            </div>
+        </div>
+        <form method="post" action="/logout">
+            <button type="submit" class="btn btn-secondary">Sair</button>
+        </form>
+    </div>
+</header>
+
+<main class="app-main">
+    {% set latest_alert = alerts[0] if alerts else none %}
+    {% set has_olist_config = olist_config.client_id and olist_config.client_secret %}
+    {% if flash %}
+    <div class="flash flash-{{ flash.category }}">{{ flash.message }}</div>
+    {% endif %}
+
+    <section class="dashboard-header glass">
+        <div>
+            <h2>Bem-vindo, {{ user.email }}</h2>
+        </div>
+        <div class="stats-row">
+            <div class="stat-card">
+                <span class="label">Frequência</span>
+                <span class="value">{{ config.frequency_minutes }} min</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">Dias retroativos</span>
+                <span class="value">{{ config.dias_retroativos_emissao }}</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">Destinatários ativos</span>
+                <span class="value">{{ recipients | selectattr("is_active") | list | length }}</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">Última execução</span>
+                <span class="value">{% if last_run %}{{ last_run.status }}{% else %}—{% endif %}</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="glass panel log-panel" id="online-log">
+        <div class="panel-header">
+            <div>
+                <h3>Log online</h3>
+            </div>
+        </div>
+        <div class="log-grid">
+            <article class="log-highlight">
+                <span class="log-kicker">Execução atual</span>
+                <strong class="log-main">
+                    {% if last_run %}
+                    {{ last_run.status | upper }}
+                {% elif olist_config.client_id and olist_config.client_secret %}
+                    Aguardando primeira execução
+                {% else %}
+                    Nenhuma execução registrada
+                    {% endif %}
+                </strong>
+                <span class="muted">
+                    {% if last_run %}
+                    Última rotina {{ last_run.trigger_type }} com {{ last_run.orders_evaluated }} pedidos avaliados e {{ last_run.orders_irregular }} irregularidades.
+                    {% else %}
+                    A rotina manual usa a janela salva em configuração.
+                    {% endif %}
+                </span>
+            </article>
+            <article class="log-highlight">
+                <span class="log-kicker">Olist</span>
+                <strong class="log-main">
+                    {% if olist_token and olist_token.access_token %}
+                    Conectado
+                    {% elif has_olist_config %}
+                    Pronto para autenticar
+                    {% else %}
+                    Configuração pendente
+                    {% endif %}
+                </strong>
+                <span class="muted">
+                    {% if olist_token and olist_token.expires_at %}
+                    Token com validade até {{ olist_token.expires_at | datetime_sp }}.
+                    {% elif has_olist_config %}
+                    Client ID e Client Secret já cadastrados na aplicação.
+                    {% else %}
+                    Preencha os dados da integração para gerar a autorização OAuth.
+                    {% endif %}
+                </span>
+            </article>
+            <article class="log-highlight">
+                <span class="log-kicker">Alertas</span>
+                <strong class="log-main">
+                    {% if latest_alert %}
+                    {{ latest_alert.status | upper }}
+                    {% else %}
+                    Sem envio ainda
+                    {% endif %}
+                </strong>
+                <span class="muted">
+                    {% if latest_alert %}
+                    Último alerta para {{ latest_alert.email_to }} no pedido {{ latest_alert.order_number }}.
+                    {% else %}
+                    Nenhum alerta foi persistido até o momento.
+                    {% endif %}
+                </span>
+            </article>
+            <article class="log-highlight">
+                <span class="log-kicker">Janela ativa</span>
+                <strong class="log-main">{{ config.dias_retroativos_emissao }} dias</strong>
+                <span class="muted">Execução a cada {{ config.frequency_minutes }} minutos com {{ recipients | selectattr("is_active") | list | length }} destinatários ativos.</span>
+            </article>
+        </div>
+        <div class="log-tail">
+            <div class="log-tail-header">
+                <div>
+                    <strong>Últimas 10 linhas do log</strong>
+                    <div class="muted">Atualização em tempo de carregamento da tela.</div>
+                </div>
+                <div class="log-actions">
+                    <form method="post" action="/runs/execute">
+                        <button type="submit" class="btn btn-primary">Executar agora</button>
+                    </form>
+                    <a href="#integration" class="btn btn-secondary">Ver integração Olist</a>
+                </div>
+            </div>
+            <div class="log-tail-body">
+                {% if online_log_lines %}
+                    {% for log_line in online_log_lines %}
+                    <div class="log-line">{{ log_line }}</div>
+                    {% endfor %}
+                {% else %}
+                    <div class="log-line log-line-empty">Nenhuma linha de log disponível no momento.</div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <section class="glass panel panel-full" id="last-irregular-order">
+        <div class="panel-header">
+            <div>
+                <h3>Último pedido fora da política</h3>
+            </div>
+        </div>
+        {% if last_irregular_alert %}
+        <div class="last-irregular-card">
+            <div class="irregular-emphasis">
+                <span class="label">Pedido</span>
+                <strong class="irregular-order-number">{{ last_irregular_alert.order_number }}</strong>
+            </div>
+            <div class="irregular-grid">
+                <div class="integration-card compact-card">
+                    <div><strong>Regra violada:</strong> {{ last_irregular_alert.policy_code }}</div>
+                    <div><strong>Status do alerta:</strong> {{ last_irregular_alert.status }}</div>
+                </div>
+                <div class="integration-card compact-card">
+                    <div><strong>Destinatário:</strong> {{ last_irregular_alert.email_to }}</div>
+                    <div><strong>Registrado em:</strong> {{ last_irregular_alert.sent_at | datetime_sp }}</div>
+                </div>
+                <div class="integration-card compact-card">
+                    <div><strong>Última execução:</strong> {{ last_run.started_at | datetime_sp if last_run else "—" }}</div>
+                    <div><strong>Irregularidades:</strong> {{ last_run.orders_irregular if last_run else 0 }}</div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-state-box">
+            <strong>Nenhum pedido fora da política foi persistido na última execução.</strong>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="glass panel panel-full" id="integration">
+        <div class="panel-header">
+            <div>
+                <h3>Integração Olist</h3>
+            </div>
+        </div>
+        <form method="post" action="/olist/settings" class="grid-form integration-grid">
+            <label>
+                <span>Client ID</span>
+                <input type="text" name="client_id" value="{{ olist_config.client_id }}" required>
+            </label>
+            <label>
+                <span>Client Secret</span>
+                <input type="password" name="client_secret" placeholder="{% if olist_config.client_secret %}Mantido no cadastro{% else %}Cole o segredo da aplicação{% endif %}">
+            </label>
+            <label>
+                <span>Redirect URI</span>
+                <input type="url" name="redirect_uri" value="{{ olist_config.redirect_uri }}" required>
+            </label>
+            <label>
+                <span>API Base URL</span>
+                <input type="url" name="api_base_url" value="{{ olist_config.api_base_url }}" required>
+            </label>
+            <label>
+                <span>OAuth Auth URL</span>
+                <input type="url" name="auth_url" value="{{ olist_config.auth_url }}" required>
+            </label>
+            <label>
+                <span>OAuth Token URL</span>
+                <input type="url" name="token_url" value="{{ olist_config.token_url }}" required>
+            </label>
+            <label class="span-all">
+                <span>Caminho da API de pedidos</span>
+                <input type="text" name="orders_path" value="{{ olist_config.orders_path }}" placeholder="Ex.: api/v3/orders">
+            </label>
+            <div class="form-actions span-all">
+                <button type="submit" class="btn btn-primary">Salvar integração</button>
+            </div>
+        </form>
+        <div class="integration-overview top-gap">
+            <div class="integration-card">
+                <div><strong>Status:</strong> {% if olist_token and olist_token.access_token %}Conectado{% elif has_olist_config %}Pronto para autorizar{% else %}Aguardando configuração{% endif %}</div>
+                <div><strong>Último erro:</strong> {{ olist_token.last_error if olist_token and olist_token.last_error else "Sem erros registrados" }}</div>
+            </div>
+            <div class="integration-card">
+                <div><strong>Última tentativa de conexão:</strong> {{ olist_config.last_connect_attempt_at | datetime_sp if olist_config.last_connect_attempt_at else "Nenhuma tentativa registrada" }}</div>
+                <div><strong>Último callback:</strong> {{ olist_config.last_callback_at | datetime_sp if olist_config.last_callback_at else "Nenhum callback recebido" }}</div>
+            </div>
+            <div class="integration-card">
+                <div><strong>Redirect URI atual:</strong> {{ olist_config.redirect_uri }}</div>
+                <div><strong>Endpoint de pedidos:</strong> {{ olist_config.orders_path if olist_config.orders_path else "Não configurado" }}</div>
+            </div>
+        </div>
+        <div class="form-actions top-gap">
+            <a href="/olist/connect" class="btn btn-secondary">Iniciar OAuth</a>
+            <form method="post" action="/olist/renew-token">
+                <button type="submit" class="btn btn-secondary">Renovar token</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="glass panel" id="settings">
+        <div class="panel-header">
+            <div>
+                <h3>Configurações gerais</h3>
+            </div>
+        </div>
+        <form method="post" action="/settings" class="grid-form compact-grid">
+            <label>
+                <span>Frequência (min)</span>
+                <input type="number" min="1" name="frequency_minutes" value="{{ config.frequency_minutes }}" required>
+            </label>
+            <label>
+                <span>Dias retroativos</span>
+                <input type="number" min="1" name="dias_retroativos_emissao" value="{{ config.dias_retroativos_emissao }}" required>
+            </label>
+            <label>
+                <span>Remetente Resend</span>
+                <input type="email" name="resend_from_email" value="{{ config.resend_from_email }}" required>
+            </label>
+            <div class="form-actions span-all">
+                <button type="submit" class="btn btn-primary">Salvar configurações</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="glass panel" id="policies">
+        <div class="panel-header">
+            <div>
+                <h3>Políticas comerciais</h3>
+            </div>
+            <div class="btn-group wrap">
+                <button type="button" class="btn btn-secondary" id="add-policy-row">Adicionar faixa</button>
+                <form method="post" action="/policy-rules/restore-defaults">
+                    <button type="submit" class="btn btn-secondary">Restaurar padrão</button>
+                </form>
+            </div>
+        </div>
+        <form method="post" action="/policy-rules" id="policy-rules-form">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Regra</th>
+                            <th>Valor inicial</th>
+                            <th>Valor final</th>
+                            <th>Prazo máx.</th>
+                            <th>Desc. máx.</th>
+                            <th>À vista</th>
+                            <th>Ativa</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="policy-rules-body">
+                        {% for rule in policies %}
+                        <tr class="policy-row">
+                            <td>
+                                <input type="hidden" name="row_id" value="row-{{ loop.index }}">
+                                <input type="text" name="rule_name" value="{{ rule.rule_name }}" required>
+                            </td>
+                            <td><input type="text" name="value_min" value="{{ rule.value_min | currency }}" class="currency-input" inputmode="decimal" required></td>
+                            <td><input type="text" name="value_max" value="{{ rule.value_max | currency if rule.value_max is not none else '' }}" class="currency-input" inputmode="decimal"></td>
+                            <td><input type="number" min="0" name="max_term_days" value="{{ rule.max_term_days }}" required></td>
+                            <td><input type="text" name="max_discount_percent" value="{{ rule.max_discount_percent | percent }}" class="percent-input" inputmode="decimal" required></td>
+                            <td class="text-center"><input type="checkbox" name="requires_cash_payment" value="row-{{ loop.index }}" {% if rule.requires_cash_payment %}checked{% endif %}></td>
+                            <td class="text-center"><input type="checkbox" name="is_active" value="row-{{ loop.index }}" {% if rule.is_active %}checked{% endif %}></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-small btn-danger remove-policy-row">Excluir</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="form-actions top-gap">
+                <button type="submit" class="btn btn-primary">Salvar políticas</button>
+            </div>
+        </form>
+        <template id="policy-row-template">
+            <tr class="policy-row">
+                <td>
+                    <input type="hidden" name="row_id" value="__ROW_ID__">
+                    <input type="text" name="rule_name" value="Nova faixa" required>
+                </td>
+                <td><input type="text" name="value_min" value="" class="currency-input" inputmode="decimal" required></td>
+                <td><input type="text" name="value_max" value="" class="currency-input" inputmode="decimal"></td>
+                <td><input type="number" min="0" name="max_term_days" value="0" required></td>
+                <td><input type="text" name="max_discount_percent" value="" class="percent-input" inputmode="decimal" required></td>
+                <td class="text-center"><input type="checkbox" name="requires_cash_payment" value="__ROW_ID__"></td>
+                <td class="text-center"><input type="checkbox" name="is_active" value="__ROW_ID__" checked></td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-small btn-danger remove-policy-row">Excluir</button>
+                </td>
+            </tr>
+        </template>
+    </section>
+
+    <div class="main-grid">
+        <section class="glass panel" id="recipients">
+            <div class="panel-header">
+                <div>
+                    <h3>Destinatários</h3>
+                </div>
+            </div>
+            <form method="post" action="/recipients" class="inline-form">
+                <input type="email" name="email" placeholder="email@empresa.com" required>
+                <button type="submit" class="btn btn-primary">Adicionar</button>
+            </form>
+            <div class="list-stack">
+                {% for recipient in recipients %}
+                <div class="list-item">
+                    <div>
+                        <strong>{{ recipient.email }}</strong>
+                        <div class="muted">{% if recipient.is_active %}Ativo{% else %}Inativo{% endif %}</div>
+                    </div>
+                    <div class="btn-group">
+                        <form method="post" action="/recipients/{{ recipient.id }}/toggle">
+                            <button type="submit" class="btn btn-small btn-secondary">{% if recipient.is_active %}Desativar{% else %}Ativar{% endif %}</button>
+                        </form>
+                        <form method="post" action="/recipients/{{ recipient.id }}/delete">
+                            <button type="submit" class="btn btn-small btn-danger">Excluir</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="glass panel" id="users">
+            <div class="panel-header">
+                <div>
+                    <h3>Usuários</h3>
+                </div>
+            </div>
+            <form method="post" action="/users" class="inline-form two-fields">
+                <input type="email" name="email" placeholder="novo.usuario@empresa.com" required>
+                <input type="password" name="password" placeholder="Senha inicial" required minlength="6">
+                <button type="submit" class="btn btn-primary">Criar</button>
+            </form>
+            <div class="list-stack">
+                {% for listed_user in users %}
+                <div class="list-item">
+                    <div>
+                        <strong>{{ listed_user.email }}</strong>
+                        <div class="muted">{% if listed_user.is_master %}Usuário mestre{% else %}Administrador{% endif %}</div>
+                    </div>
+                    <div class="btn-group wrap">
+                        <form method="post" action="/users/{{ listed_user.id }}/reset-password" class="inline-form compact-inline">
+                            <input type="password" name="password" placeholder="Nova senha" required minlength="6">
+                            <button type="submit" class="btn btn-small btn-secondary">Redefinir</button>
+                        </form>
+                        {% if not listed_user.is_master %}
+                        <form method="post" action="/users/{{ listed_user.id }}/delete">
+                            <button type="submit" class="btn btn-small btn-danger">Excluir</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <div class="main-grid bottom-grid">
+        <section class="glass panel" id="runs">
+            <div class="panel-header">
+                <div>
+                    <h3>Histórico de execuções</h3>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Início</th>
+                            <th>Status</th>
+                            <th>Tipo</th>
+                            <th>Versão política</th>
+                            <th>Avaliados</th>
+                            <th>Irregulares</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for run in runs %}
+                        <tr>
+                            <td>{{ run.started_at | datetime_sp }}</td>
+                            <td>{{ run.status }}</td>
+                            <td>{{ run.trigger_type }}</td>
+                            <td>{{ run.policy_version_group if run.policy_version_group else "—" }}</td>
+                            <td>{{ run.orders_evaluated }}</td>
+                            <td>{{ run.orders_irregular }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center">Nenhuma execução registrada.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="glass panel" id="alerts">
+            <div class="panel-header">
+                <div>
+                    <h3>Alertas enviados</h3>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Pedido</th>
+                            <th>Regra</th>
+                            <th>E-mail</th>
+                            <th>Status</th>
+                            <th>Envio</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for alert in alerts %}
+                        <tr>
+                            <td>{{ alert.order_number }}</td>
+                            <td>{{ alert.policy_code }}</td>
+                            <td>{{ alert.email_to }}</td>
+                            <td>{{ alert.status }}</td>
+                            <td>{{ alert.sent_at | datetime_sp }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center">Nenhum alerta registrado.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/app.js"></script>
+{% endblock %}

@@ -40,7 +40,6 @@ class SettingsService:
         self,
         frequency_minutes: int,
         dias_retroativos_emissao: int,
-        timezone_name: str,
         resend_from_email: str,
     ) -> Setting:
         if frequency_minutes <= 0:
@@ -51,7 +50,6 @@ class SettingsService:
         current = self.get()
         current.frequency_minutes = frequency_minutes
         current.dias_retroativos_emissao = dias_retroativos_emissao
-        current.timezone = timezone_name
         current.resend_from_email = resend_from_email.strip().lower()
         self.db.commit()
         self.db.refresh(current)

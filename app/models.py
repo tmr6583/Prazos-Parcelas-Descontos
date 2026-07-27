@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -48,6 +49,23 @@ class Setting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class PolicyRule(Base):
+    __tablename__ = "policy_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rule_name: Mapped[str] = mapped_column(String(100))
+    value_min: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    value_max: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    max_term_days: Mapped[int] = mapped_column(Integer, default=0)
+    max_discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2))
+    requires_cash_payment: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=1)
+    version_group: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class OAuthToken(Base):
     __tablename__ = "oauth_tokens"
 
@@ -63,6 +81,31 @@ class OAuthToken(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class OlistConnectionSetting(Base):
+    __tablename__ = "olist_connection_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    client_id: Mapped[str] = mapped_column(String(255), default="")
+    client_secret: Mapped[str] = mapped_column(Text, default="")
+    redirect_uri: Mapped[str] = mapped_column(String(500), default="http://localhost:3600/olist/callback")
+    auth_url: Mapped[str] = mapped_column(
+        String(500),
+        default="https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/auth",
+    )
+    token_url: Mapped[str] = mapped_column(
+        String(500),
+        default="https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token",
+    )
+    api_base_url: Mapped[str] = mapped_column(String(500), default="https://erp.olist.com/")
+    orders_path: Mapped[str] = mapped_column(String(255), default="")
+    oauth_state: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    oauth_state_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_callback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_connect_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class JobRun(Base):
     __tablename__ = "job_runs"
 
@@ -72,6 +115,7 @@ class JobRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="running")
     query_start_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    policy_version_group: Mapped[int | None] = mapped_column(Integer, nullable=True)
     orders_evaluated: Mapped[int] = mapped_column(Integer, default=0)
     orders_irregular: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

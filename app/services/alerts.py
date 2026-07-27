@@ -5,10 +5,10 @@ from datetime import datetime, timezone
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import Retrying, stop_after_attempt, wait_fixed
 
 from app.config import Settings
-from app.models import AlertSent
+from app.models import AlertSent, Setting
 from app.services.policy import OrderData, PolicyViolation
 
 
@@ -57,14 +57,23 @@ class AlertService:
     def send(self, email_to: str, subject: str, html: str) -> str:
         if not self.settings.resend_api_key:
             raise ValueError("RESEND_API_KEY nao configurada.")
-        return self._send_with_retry(email_to=email_to, subject=subject, html=html)
+        retrying = Retrying(
+            stop=stop_after_attempt(self.settings.resend_retry_attempts),
+            wait=wait_fixed(self.settings.resend_retry_backoff_seconds),
+            reraise=True,
+        )
+        for attempt in retrying:
+            with attempt:
+                return self._send_once(email_to=email_to, subject=subject, html=html)
+        raise RuntimeError("Falha inesperada no envio de email.")
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_fixed(2),
-        reraise=True,
-    )
-    def _send_with_retry(self, *, email_to: str, subject: str, html: str) -> str:
+    def _send_once(self, *, email_to: str, subject: str, html: str) -> str:
+        current_settings = self.db.get(Setting, 1)
+        from_email = (
+            current_settings.resend_from_email
+            if current_settings is not None
+            else str(self.settings.resend_from_email)
+        )
         response = httpx.post(
             "https://api.resend.com/emails",
             headers={
@@ -72,7 +81,7 @@ class AlertService:
                 "Content-Type": "application/json",
             },
             json={
-                "from": str(self.settings.resend_from_email),
+                "from": from_email,
                 "to": [email_to],
                 "subject": subject,
                 "html": html,

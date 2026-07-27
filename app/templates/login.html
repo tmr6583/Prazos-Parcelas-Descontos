@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Login | Sistema de Alertas ERP{% endblock %}
+
+{% block body %}
+<main class="login-shell">
+    <section class="login-card glass">
+        <h1>Sistema de Alertas ERP</h1>
+        <p class="subtitle">Acesse o painel administrativo do monitor de políticas comerciais.</p>
+
+        {% if flash %}
+        <div class="flash flash-{{ flash.category }}">{{ flash.message }}</div>
+        {% endif %}
+
+        <form method="post" action="/login" class="stack-form">
+            <label>
+                <span>E-mail</span>
+                <input type="email" name="email" placeholder="admin@empresa.com" required>
+            </label>
+            <label>
+                <span>Senha</span>
+                <input type="password" name="password" placeholder="••••••••" required>
+            </label>
+            <button type="submit" class="btn btn-primary full-width">Entrar</button>
+        </form>
+    </section>
+</main>
+{% endblock %}

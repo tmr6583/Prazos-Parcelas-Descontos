@@ -31,8 +31,8 @@ class Settings(BaseModel):
     olist_client_id: str = ""
     olist_client_secret: str = ""
     olist_redirect_uri: str = "http://localhost:3600/olist/callback"
-    olist_auth_url: str = ""
-    olist_token_url: str = ""
+    olist_auth_url: str = "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/auth"
+    olist_token_url: str = "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token"
     olist_orders_path: str = ""
 
     resend_api_key: str = ""
@@ -81,8 +81,14 @@ def _read_env() -> dict[str, Any]:
         "olist_client_secret": ("OLIST_CLIENT_SECRET", ""),
         "olist_redirect_uri": ("OLIST_REDIRECT_URI", "http://localhost:3600/olist/callback"),
         "olist_base_url": ("OLIST_BASE_URL", "https://erp.olist.com/"),
-        "olist_auth_url": ("OLIST_AUTH_URL", ""),
-        "olist_token_url": ("OLIST_TOKEN_URL", ""),
+        "olist_auth_url": (
+            "OLIST_AUTH_URL",
+            "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/auth",
+        ),
+        "olist_token_url": (
+            "OLIST_TOKEN_URL",
+            "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token",
+        ),
         "olist_orders_path": ("OLIST_ORDERS_PATH", ""),
         "resend_api_key": ("RESEND_API_KEY", ""),
         "resend_from_email": ("RESEND_FROM_EMAIL", "financeiro@betinalimpeza.com.br"),
