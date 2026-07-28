@@ -1,1 +1,1 @@
-"""Sistema de alertas ERP para politicas de prazo, parcelas e desconto."""
+"""Sistema de alertas ERP para políticas de prazo, parcelas e desconto."""

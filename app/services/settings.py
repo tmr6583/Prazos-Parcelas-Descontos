@@ -33,7 +33,7 @@ class SettingsService:
     def get(self) -> Setting:
         current = self.db.get(Setting, 1)
         if current is None:
-            raise RuntimeError("Configuracao inicial nao encontrada.")
+            raise RuntimeError("Configuração inicial não encontrada.")
         return current
 
     def update(
@@ -43,7 +43,7 @@ class SettingsService:
         resend_from_email: str,
     ) -> Setting:
         if frequency_minutes <= 0:
-            raise ValueError("A frequencia deve ser maior que zero.")
+            raise ValueError("A frequência deve ser maior que zero.")
         if dias_retroativos_emissao <= 0:
             raise ValueError("Os dias retroativos devem ser maiores que zero.")
 

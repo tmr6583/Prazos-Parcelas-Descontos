@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.config import BASE_DIR, get_settings
@@ -72,12 +73,30 @@ templates.env.filters["datetime_sp"] = format_datetime_sp
 
 def _bootstrap() -> None:
     Base.metadata.create_all(bind=engine)
+    _ensure_runtime_schema()
     with SessionLocal() as db:
         AuthService(db).bootstrap_master_user(settings)
         SettingsService(db).bootstrap(settings)
         AdminService(db).bootstrap_recipients("thiago@betinalimpeza.com.br")
         OlistService(db, settings).bootstrap_settings()
         PolicyRuleService(db).bootstrap_defaults()
+
+
+def _ensure_runtime_schema() -> None:
+    inspector = inspect(engine)
+    columns = {column["name"] for column in inspector.get_columns("identified_orders")} if inspector.has_table("identified_orders") else set()
+    missing_columns = {
+        "sale_date_display": "VARCHAR(100)",
+        "customer_name": "VARCHAR(255)",
+        "gross_amount": "NUMERIC(12, 2)",
+        "discount_amount": "NUMERIC(12, 2)",
+        "discount_percent": "NUMERIC(5, 2)",
+    }
+    pending_columns = {name: ddl for name, ddl in missing_columns.items() if name not in columns}
+    if pending_columns:
+        with engine.begin() as connection:
+            for column_name, ddl in pending_columns.items():
+                connection.execute(text(f"ALTER TABLE identified_orders ADD COLUMN {column_name} {ddl}"))
 
 
 @asynccontextmanager
@@ -108,11 +127,11 @@ def consume_flash(request: Request) -> dict[str, str] | None:
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user_id = request.session.get("user_id")
     if not user_id:
-        raise PermissionError("Sessao ausente")
+        raise PermissionError("Sessão ausente")
     user = AuthService(db).get_by_id(int(user_id))
     if user is None:
         request.session.clear()
-        raise PermissionError("Sessao invalida")
+        raise PermissionError("Sessão inválida")
     return user
 
 
@@ -130,7 +149,7 @@ def redirect_to_login() -> RedirectResponse:
 def parse_decimal(value: str) -> Decimal:
     normalized = str(value or "").strip()
     if not normalized:
-        raise ValueError("Valor numerico invalido.")
+        raise ValueError("Valor numérico inválido.")
 
     normalized = normalized.replace("R$", "").replace("%", "").replace(" ", "")
     normalized = "".join(char for char in normalized if char.isdigit() or char in ",.-")
@@ -144,7 +163,7 @@ def parse_decimal(value: str) -> Decimal:
     try:
         return Decimal(normalized)
     except (InvalidOperation, AttributeError):
-        raise ValueError("Valor numerico invalido.") from None
+        raise ValueError("Valor numérico inválido.") from None
 
 
 def render_dashboard(request: Request, db: Session, user: User):
@@ -163,7 +182,7 @@ def render_dashboard(request: Request, db: Session, user: User):
     online_log_lines = admin_service.get_online_log_lines(limit=10)
 
     last_run = runs[0] if runs else None
-    last_irregular_alert = admin_service.get_last_irregular_alert_for_run(last_run.id if last_run else None)
+    identified_orders = admin_service.list_identified_orders_for_run(last_run.id if last_run else None)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -178,7 +197,7 @@ def render_dashboard(request: Request, db: Session, user: User):
             "runs": runs,
             "alerts": alerts,
             "last_run": last_run,
-            "last_irregular_alert": last_irregular_alert,
+            "identified_orders": identified_orders,
             "olist_token": token,
             "olist_config": olist_config,
             "online_log_lines": online_log_lines,
@@ -217,7 +236,7 @@ async def login(request: Request, db: Session = Depends(get_db)):
     password = str(form.get("password", ""))
     user = AuthService(db).authenticate(email, password)
     if user is None:
-        flash(request, "Credenciais invalidas.", "error")
+        flash(request, "Credenciais inválidas.", "error")
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
     request.session["user_id"] = user.id
@@ -264,7 +283,7 @@ async def update_settings(request: Request, db: Session = Depends(get_db)):
             resend_from_email=str(form.get("resend_from_email", "")).strip().lower(),
         )
         app.state.scheduler.reschedule()
-        flash(request, "Configuracoes atualizadas.", "success")
+        flash(request, "Configurações atualizadas.", "success")
     except Exception as exc:
         flash(request, str(exc), "error")
     return RedirectResponse(url="/#settings", status_code=status.HTTP_303_SEE_OTHER)
@@ -283,7 +302,7 @@ async def create_user(request: Request, db: Session = Depends(get_db)):
             email=str(form.get("email", "")),
             password=str(form.get("password", "")),
         )
-        flash(request, "Usuario criado com sucesso.", "success")
+        flash(request, "Usuário criado com sucesso.", "success")
     except Exception as exc:
         flash(request, str(exc), "error")
     return RedirectResponse(url="/#users", status_code=status.HTTP_303_SEE_OTHER)
@@ -297,12 +316,12 @@ def delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
         return redirect_to_login()
 
     if current_user.id == user_id:
-        flash(request, "Nao e permitido excluir a propria sessao.", "error")
+        flash(request, "Não é permitido excluir a própria sessão.", "error")
         return RedirectResponse(url="/#users", status_code=status.HTTP_303_SEE_OTHER)
 
     try:
         AuthService(db).soft_delete_user(user_id)
-        flash(request, "Usuario excluido com sucesso.", "success")
+        flash(request, "Usuário excluído com sucesso.", "success")
     except Exception as exc:
         flash(request, str(exc), "error")
     return RedirectResponse(url="/#users", status_code=status.HTTP_303_SEE_OTHER)
@@ -334,7 +353,7 @@ async def add_recipient(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     try:
         AdminService(db).add_recipient(str(form.get("email", "")))
-        flash(request, "Destinatario salvo com sucesso.", "success")
+        flash(request, "Destinatário salvo com sucesso.", "success")
     except Exception as exc:
         flash(request, str(exc), "error")
     return RedirectResponse(url="/#recipients", status_code=status.HTTP_303_SEE_OTHER)
@@ -349,7 +368,7 @@ def delete_recipient(recipient_id: int, request: Request, db: Session = Depends(
 
     try:
         AdminService(db).soft_delete_recipient(recipient_id)
-        flash(request, "Destinatario excluido com sucesso.", "success")
+        flash(request, "Destinatário excluído com sucesso.", "success")
     except Exception as exc:
         flash(request, str(exc), "error")
     return RedirectResponse(url="/#recipients", status_code=status.HTTP_303_SEE_OTHER)
@@ -364,7 +383,7 @@ def toggle_recipient(recipient_id: int, request: Request, db: Session = Depends(
 
     try:
         AdminService(db).toggle_recipient(recipient_id)
-        flash(request, "Status do destinatario atualizado.", "success")
+        flash(request, "Status do destinatário atualizado.", "success")
     except Exception as exc:
         flash(request, str(exc), "error")
     return RedirectResponse(url="/#recipients", status_code=status.HTTP_303_SEE_OTHER)
@@ -407,7 +426,7 @@ async def update_policy_rules(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     try:
         PolicyRuleService(db).replace_rules(_parse_policy_form(form))
-        flash(request, "Politicas comerciais atualizadas.", "success")
+        flash(request, "Políticas comerciais atualizadas.", "success")
     except Exception as exc:
         flash(request, str(exc), "error")
     return RedirectResponse(url="/#policies", status_code=status.HTTP_303_SEE_OTHER)
@@ -421,7 +440,7 @@ def restore_policy_defaults(request: Request, db: Session = Depends(get_db)):
         return redirect_to_login()
 
     PolicyRuleService(db).restore_defaults()
-    flash(request, "Politicas padrao restauradas.", "success")
+    flash(request, "Políticas padrão restauradas.", "success")
     return RedirectResponse(url="/#policies", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -448,7 +467,7 @@ def olist_connect(request: Request, db: Session = Depends(get_db)):
         OlistService(db, settings).record_last_error(str(exc))
         write_runtime_event(
             "olist_authorization_request_failed",
-            "Falha ao iniciar a autorizacao OAuth da Olist.",
+            "Falha ao iniciar a autorização OAuth da Olist.",
             level="ERROR",
             detail=str(exc),
         )
@@ -474,12 +493,12 @@ async def update_olist_settings(request: Request, db: Session = Depends(get_db))
             api_base_url=str(form.get("api_base_url", "")),
             orders_path=str(form.get("orders_path", "")),
         )
-        flash(request, "Configuracao da integracao Olist atualizada.", "success")
+        flash(request, "Configuração da integração Olist atualizada.", "success")
     except Exception as exc:
         OlistService(db, settings).record_last_error(str(exc))
         write_runtime_event(
             "olist_settings_update_failed",
-            "Falha ao atualizar a configuracao da integracao Olist.",
+            "Falha ao atualizar a configuração da integração Olist.",
             level="ERROR",
             detail=str(exc),
         )
@@ -501,23 +520,23 @@ def olist_callback(
         return redirect_to_login()
 
     if error:
-        OlistService(db, settings).record_last_error(f"Falha na autorizacao Olist: {error}")
+        OlistService(db, settings).record_last_error(f"Falha na autorização Olist: {error}")
         write_runtime_event(
             "olist_callback_error",
-            "Callback OAuth da Olist retornou erro.",
+            "Retorno OAuth da Olist retornou erro.",
             level="ERROR",
             detail=str(error),
         )
-        flash(request, f"Falha na autorizacao Olist: {error}", "error")
+        flash(request, f"Falha na autorização Olist: {error}", "error")
         return RedirectResponse(url="/#integration", status_code=status.HTTP_303_SEE_OTHER)
     if not code:
-        OlistService(db, settings).record_last_error("Callback Olist recebido sem code.")
+        OlistService(db, settings).record_last_error("Retorno da Olist recebido sem código.")
         write_runtime_event(
             "olist_callback_missing_code",
-            "Callback OAuth da Olist recebido sem codigo de autorizacao.",
+            "Retorno OAuth da Olist recebido sem código de autorização.",
             level="ERROR",
         )
-        flash(request, "Callback Olist recebido sem code.", "error")
+        flash(request, "Retorno da Olist recebido sem código.", "error")
         return RedirectResponse(url="/#integration", status_code=status.HTTP_303_SEE_OTHER)
 
     try:
@@ -527,7 +546,7 @@ def olist_callback(
         OlistService(db, settings).record_last_error(str(exc))
         write_runtime_event(
             "olist_callback_failed",
-            "Falha ao concluir o callback OAuth da Olist.",
+            "Falha ao concluir o retorno OAuth da Olist.",
             level="ERROR",
             detail=str(exc),
         )
@@ -574,7 +593,7 @@ def execute_run(request: Request, db: Session = Depends(get_db)):
         flash(request, message, "success" if job_run.status == "success" else "warning")
     except Exception as exc:
         flash(request, str(exc), "error")
-    return RedirectResponse(url="/#runs", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/#online-log", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/runs")

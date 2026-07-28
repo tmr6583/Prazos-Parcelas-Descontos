@@ -8,7 +8,8 @@ from app.config import Settings
 from app.models import User
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Usa PBKDF2 como padrão novo e mantém suporte de verificação para hashes bcrypt legados.
+pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
 
 
 class AuthService:
@@ -72,7 +73,7 @@ class AuthService:
         normalized_email = email.strip().lower()
         existing = self.db.scalar(select(User).where(User.email == normalized_email))
         if existing and not existing.is_deleted:
-            raise ValueError("Ja existe um usuario com este email.")
+            raise ValueError("Já existe um usuário com este e-mail.")
 
         password_hash = self.hash_password(password)
         if existing and existing.is_deleted:
@@ -92,9 +93,9 @@ class AuthService:
     def soft_delete_user(self, user_id: int) -> None:
         user = self.db.get(User, user_id)
         if user is None or user.is_deleted:
-            raise ValueError("Usuario nao encontrado.")
+            raise ValueError("Usuário não encontrado.")
         if user.is_master:
-            raise ValueError("O usuario mestre nao pode ser excluido.")
+            raise ValueError("O usuário mestre não pode ser excluído.")
 
         user.is_active = False
         user.is_deleted = True
@@ -103,7 +104,7 @@ class AuthService:
     def reset_password(self, user_id: int, password: str) -> None:
         user = self.db.get(User, user_id)
         if user is None or user.is_deleted:
-            raise ValueError("Usuario nao encontrado.")
+            raise ValueError("Usuário não encontrado.")
         user.password_hash = self.hash_password(password)
         self.db.commit()
 

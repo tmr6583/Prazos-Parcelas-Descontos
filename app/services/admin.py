@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import BASE_DIR, get_settings
-from app.models import AlertSent, JobRun, OAuthToken, Recipient
+from app.models import AlertSent, IdentifiedOrder, JobRun, OAuthToken, Recipient
 
 
 class AdminService:
@@ -46,7 +46,7 @@ class AdminService:
         normalized_email = email.strip().lower()
         existing = self.db.scalar(select(Recipient).where(Recipient.email == normalized_email))
         if existing and not existing.is_deleted:
-            raise ValueError("Ja existe um destinatario com este email.")
+            raise ValueError("Já existe um destinatário com este e-mail.")
 
         if existing and existing.is_deleted:
             existing.is_deleted = False
@@ -64,14 +64,14 @@ class AdminService:
     def toggle_recipient(self, recipient_id: int) -> None:
         recipient = self.db.get(Recipient, recipient_id)
         if recipient is None or recipient.is_deleted:
-            raise ValueError("Destinatario nao encontrado.")
+            raise ValueError("Destinatário não encontrado.")
         recipient.is_active = not recipient.is_active
         self.db.commit()
 
     def soft_delete_recipient(self, recipient_id: int) -> None:
         recipient = self.db.get(Recipient, recipient_id)
         if recipient is None or recipient.is_deleted:
-            raise ValueError("Destinatario nao encontrado.")
+            raise ValueError("Destinatário não encontrado.")
         recipient.is_deleted = True
         recipient.is_active = False
         self.db.commit()
@@ -85,17 +85,16 @@ class AdminService:
     def list_recent_alerts(self, limit: int = 50) -> list[AlertSent]:
         return list(self.db.scalars(select(AlertSent).order_by(AlertSent.sent_at.desc()).limit(limit)))
 
-    def get_last_irregular_alert_for_run(self, job_run_id: int | None) -> AlertSent | None:
+    def list_identified_orders_for_run(self, job_run_id: int | None) -> list[IdentifiedOrder]:
         if job_run_id is None:
-            return None
+            return []
 
         statement = (
-            select(AlertSent)
-            .where(AlertSent.job_run_id == job_run_id)
-            .order_by(AlertSent.sent_at.desc(), AlertSent.id.desc())
-            .limit(1)
+            select(IdentifiedOrder)
+            .where(IdentifiedOrder.job_run_id == job_run_id)
+            .order_by(IdentifiedOrder.created_at.desc(), IdentifiedOrder.id.desc())
         )
-        return self.db.scalar(statement)
+        return list(self.db.scalars(statement))
 
     def get_online_log_lines(self, limit: int = 10) -> list[str]:
         log_candidates = [

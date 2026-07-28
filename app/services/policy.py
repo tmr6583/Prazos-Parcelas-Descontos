@@ -18,6 +18,7 @@ class OrderData:
     order_id: str
     order_number: str
     customer_name: str | None
+    seller_name: str | None
     gross_amount: Decimal
     discount_amount: Decimal
     discount_percent: Decimal
@@ -162,13 +163,13 @@ class PolicyRuleService:
             if not rule.rule_name.strip():
                 raise ValueError(f"A regra {index} precisa de um nome.")
             if rule.value_min < Decimal("0.00"):
-                raise ValueError(f"A regra {rule.rule_name} possui valor inicial invalido.")
+                raise ValueError(f"A regra {rule.rule_name} possui valor inicial inválido.")
             if rule.value_max is not None and rule.value_max < rule.value_min:
                 raise ValueError(f"A regra {rule.rule_name} possui faixa final menor que a inicial.")
             if rule.max_term_days < 0:
-                raise ValueError(f"A regra {rule.rule_name} possui prazo maximo invalido.")
+                raise ValueError(f"A regra {rule.rule_name} possui prazo máximo inválido.")
             if rule.max_discount_percent < Decimal("0.00"):
-                raise ValueError(f"A regra {rule.rule_name} possui desconto maximo invalido.")
+                raise ValueError(f"A regra {rule.rule_name} possui desconto máximo inválido.")
             if previous_max is not None and rule.value_min <= previous_max:
                 raise ValueError("Existem faixas de valor sobrepostas.")
             if previous_max is not None and rule.value_min > (previous_max + Decimal("0.01")):
@@ -176,7 +177,7 @@ class PolicyRuleService:
             previous_max = rule.value_max
 
         if sorted_rules[-1].value_max is not None:
-            raise ValueError("A ultima faixa ativa deve ficar aberta para valores acima do limite.")
+            raise ValueError("A última faixa ativa deve ficar aberta para valores acima do limite.")
 
 
 class PolicyEngine:
@@ -192,7 +193,7 @@ class PolicyEngine:
             return [
                 PolicyViolation(
                     policy_code="SEM_POLITICA",
-                    description="Pedido sem politica comercial correspondente.",
+                    description="Pedido sem política comercial correspondente.",
                     max_term_days=0,
                     max_discount_percent=Decimal("0.00"),
                 ),
@@ -208,7 +209,7 @@ class PolicyEngine:
                     PolicyViolation(
                         policy_code=self._policy_code(rule.sort_order),
                         description=(
-                            f"{rule.rule_name} exige pagamento a vista e desconto maximo de "
+                            f"{rule.rule_name} exige pagamento à vista e desconto máximo de "
                             f"{max_discount_percent:.2f}%."
                         ),
                         max_term_days=0,
@@ -220,7 +221,7 @@ class PolicyEngine:
                 PolicyViolation(
                     policy_code=self._policy_code(rule.sort_order),
                     description=(
-                        f"{rule.rule_name} permite ate {max_term_days} dias e desconto maximo de "
+                        f"{rule.rule_name} permite até {max_term_days} dias e desconto máximo de "
                         f"{max_discount_percent:.2f}%."
                     ),
                     max_term_days=max_term_days,
@@ -232,7 +233,7 @@ class PolicyEngine:
             violations.append(
                 PolicyViolation(
                     policy_code="PARCELAMENTO_PRAZO",
-                    description="Parcelamentos nao podem ultrapassar o prazo maximo da faixa.",
+                    description="Parcelamentos não podem ultrapassar o prazo máximo da faixa.",
                     max_term_days=max_term_days,
                     max_discount_percent=max_discount_percent,
                 ),

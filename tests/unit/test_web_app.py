@@ -1,8 +1,9 @@
 from __future__ import annotations
 from datetime import UTC, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 
-from app.models import AlertSent, JobRun, OAuthToken, OlistConnectionSetting, Recipient, Setting, User
+from app.models import AlertSent, IdentifiedOrder, JobRun, OAuthToken, OlistConnectionSetting, Recipient, Setting, User
 from app.services.admin import AdminService
 from app.services.runtime_log import write_runtime_event
 
@@ -40,10 +41,10 @@ def test_login_and_dashboard_render(web_client, monkeypatch) -> None:
     assert "Timezone" not in dashboard.text
     assert "cagoete" not in dashboard.text
     assert "Betina" in dashboard.text
-    assert "Client ID" in dashboard.text
-    assert "OAuth Token URL" in dashboard.text
+    assert "ID do cliente" in dashboard.text
+    assert "URL do token OAuth" in dashboard.text
     assert "Log online" in dashboard.text
-    assert "Último pedido fora da política" in dashboard.text
+    assert "Pedidos Identificados" in dashboard.text
     assert "Últimas 10 linhas do log" in dashboard.text
     assert "[27/07/2026 17:30:09] linha 9" in dashboard.text
     assert "Fluxo OAuth2 com configuração persistida na aplicação, seguindo o padrão do Albertina." not in dashboard.text
@@ -306,7 +307,7 @@ def test_dashboard_formats_olist_datetimes_in_sao_paulo(web_client, monkeypatch)
     assert "595197" not in dashboard.text
 
 
-def test_dashboard_shows_last_irregular_order_panel(web_client, monkeypatch) -> None:
+def test_dashboard_shows_identifed_orders_panel(web_client, monkeypatch) -> None:
     client, db_session, _ = web_client
     monkeypatch.setattr(AdminService, "get_online_log_lines", lambda self, limit=10: [])
     login(client)
@@ -322,25 +323,228 @@ def test_dashboard_shows_last_irregular_order_panel(web_client, monkeypatch) -> 
     db_session.commit()
     db_session.refresh(job_run)
 
-    alert = AlertSent(
+    identified_order = IdentifiedOrder(
         job_run_id=job_run.id,
         order_id="pedido-001",
         order_number="12345",
         policy_code="FAIXA_4",
-        dedupe_key="FAIXA_4:pedido-001:2026-07-27",
-        email_to="alerta@empresa.com",
-        status="sent",
-        sent_at=datetime(2026, 7, 27, 20, 5, 0, tzinfo=UTC),
+        violation_description="Faixa 4 permite até 28 dias e desconto máximo de 12.00%.",
+        sale_date_display="2026-07-27",
+        gross_amount=Decimal("1500.24"),
+        discount_amount=Decimal("180.03"),
+        discount_percent=Decimal("12.00"),
+        seller_name="Juliana",
+        customer_name="Cliente Exemplo",
     )
-    db_session.add(alert)
+    db_session.add(identified_order)
     db_session.commit()
 
     dashboard = client.get("/")
     assert dashboard.status_code == 200
-    assert "Último pedido fora da política" in dashboard.text
+    assert "Pedidos Identificados" in dashboard.text
     assert "12345" in dashboard.text
+    assert "2026-07-27" in dashboard.text
+    assert "Cliente Exemplo" in dashboard.text
+    assert "R$ 1.500,24" in dashboard.text
+    assert "R$ 180,03" in dashboard.text
+    assert "12,00%" in dashboard.text
     assert "FAIXA_4" in dashboard.text
-    assert "alerta@empresa.com" in dashboard.text
+    assert "Juliana" in dashboard.text
+    assert "1" in dashboard.text
+
+
+def test_execution_service_writes_runtime_log_events(db_session, monkeypatch) -> None:
+    from app.config import Settings
+    from app.services.execution import ExecutionService
+
+    recorded_events: list[tuple[str, str, dict]] = []
+
+    def fake_write_runtime_event(event, message, level="INFO", **context):
+        recorded_events.append((event, message, {"level": level, **context}))
+
+    monkeypatch.setattr("app.services.execution.write_runtime_event", fake_write_runtime_event)
+
+    service = ExecutionService(db_session, Settings())
+    monkeypatch.setattr(
+        service.settings_service,
+        "get",
+        lambda: SimpleNamespace(timezone="America/Sao_Paulo", dias_retroativos_emissao=7),
+    )
+    monkeypatch.setattr(service.policy_rule_service, "list_current_rules", lambda: [SimpleNamespace()])
+    monkeypatch.setattr(service.policy_rule_service, "get_current_version_group", lambda: 1)
+    monkeypatch.setattr(
+        "app.services.execution.PolicyEngine",
+        lambda rules: SimpleNamespace(evaluate=lambda order: []),
+    )
+    monkeypatch.setattr(
+        service.settings_service,
+        "calculate_query_start",
+        lambda timezone_name, dias_retroativos_emissao: datetime(2026, 7, 27, 0, 0, 0, tzinfo=UTC),
+    )
+    monkeypatch.setattr(service.admin_service, "list_active_recipients", lambda: [])
+    monkeypatch.setattr(service.olist_service, "fetch_orders", lambda query_start: [])
+
+    job_run = service.run(trigger_type="manual")
+
+    assert job_run.status == "success"
+    assert [item[0] for item in recorded_events] == [
+        "execution_started",
+        "execution_olist_summary",
+        "execution_finished",
+    ]
+    assert recorded_events[1][2]["orders_evaluated"] == 0
+    assert recorded_events[1][2]["recipients_count"] == 0
+    assert recorded_events[2][2]["orders_irregular"] == 0
+
+
+def test_execution_service_persists_identified_orders_without_recipients(db_session, monkeypatch) -> None:
+    from app.config import Settings
+    from app.services.execution import ExecutionService
+
+    service = ExecutionService(db_session, Settings())
+    monkeypatch.setattr(
+        service.settings_service,
+        "get",
+        lambda: SimpleNamespace(timezone="America/Sao_Paulo", dias_retroativos_emissao=7),
+    )
+    monkeypatch.setattr(service.policy_rule_service, "list_current_rules", lambda: [SimpleNamespace()])
+    monkeypatch.setattr(service.policy_rule_service, "get_current_version_group", lambda: 1)
+    monkeypatch.setattr(
+        service.settings_service,
+        "calculate_query_start",
+        lambda timezone_name, dias_retroativos_emissao: datetime(2026, 7, 27, 0, 0, 0, tzinfo=UTC),
+    )
+    monkeypatch.setattr(service.admin_service, "list_active_recipients", lambda: [])
+    monkeypatch.setattr(
+        service.olist_service,
+        "fetch_orders",
+        lambda query_start: [
+            SimpleNamespace(
+                order_id="pedido-002",
+                order_number="2002",
+                customer_name="Cliente B",
+                seller_name="Fernanda",
+                gross_amount=1250.50,
+                discount_amount=75.03,
+                discount_percent=6.00,
+                issue_date_display="2026-07-28",
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.services.execution.PolicyEngine",
+        lambda rules: SimpleNamespace(
+            evaluate=lambda order: [
+                SimpleNamespace(
+                    policy_code="FAIXA_2",
+                    description="Faixa 2 permite até 7 dias e desconto máximo de 5.00%.",
+                ),
+            ],
+        ),
+    )
+    monkeypatch.setattr("app.services.execution.write_runtime_event", lambda *args, **kwargs: None)
+
+    job_run = service.run(trigger_type="manual")
+
+    identified_orders = db_session.query(IdentifiedOrder).filter(IdentifiedOrder.job_run_id == job_run.id).all()
+    assert job_run.orders_irregular == 1
+    assert len(identified_orders) == 1
+    assert identified_orders[0].order_number == "2002"
+    assert identified_orders[0].policy_code == "FAIXA_2"
+    assert identified_orders[0].seller_name == "Fernanda"
+    assert identified_orders[0].customer_name == "Cliente B"
+    assert identified_orders[0].sale_date_display == "2026-07-28"
+    assert float(identified_orders[0].gross_amount) == 1250.50
+    assert float(identified_orders[0].discount_amount) == 75.03
+    assert float(identified_orders[0].discount_percent) == 6.00
+
+
+def test_execution_service_reuses_failed_alert_record_without_integrity_error(db_session, monkeypatch) -> None:
+    from app.config import Settings
+    from app.services.execution import ExecutionService
+
+    service = ExecutionService(db_session, Settings())
+    monkeypatch.setattr(
+        service.settings_service,
+        "get",
+        lambda: SimpleNamespace(timezone="America/Sao_Paulo", dias_retroativos_emissao=3),
+    )
+    monkeypatch.setattr(service.policy_rule_service, "list_current_rules", lambda: [SimpleNamespace()])
+    monkeypatch.setattr(service.policy_rule_service, "get_current_version_group", lambda: 1)
+    monkeypatch.setattr(
+        service.settings_service,
+        "calculate_query_start",
+        lambda timezone_name, dias_retroativos_emissao: datetime(2026, 7, 25, 0, 0, 0, tzinfo=UTC),
+    )
+
+    recipient = Recipient(email="thiago@betinalimpeza.com.br", is_active=True, is_deleted=False)
+    db_session.add(recipient)
+    db_session.commit()
+
+    existing_run = JobRun(
+        trigger_type="manual",
+        status="failed",
+        query_start_date=datetime(2026, 7, 25, 0, 0, 0, tzinfo=UTC),
+        policy_version_group=1,
+    )
+    db_session.add(existing_run)
+    db_session.commit()
+    db_session.refresh(existing_run)
+
+    existing_alert = AlertSent(
+        job_run_id=existing_run.id,
+        order_id="940612326",
+        order_number="3104",
+        policy_code="FAIXA_1",
+        dedupe_key="FAIXA_1:940612326:2026-07-25",
+        email_to="thiago@betinalimpeza.com.br",
+        status="failed",
+        error_message="RESEND_API_KEY não configurada.",
+    )
+    db_session.add(existing_alert)
+    db_session.commit()
+
+    monkeypatch.setattr(service.admin_service, "list_active_recipients", lambda: [recipient])
+    monkeypatch.setattr(
+        service.olist_service,
+        "fetch_orders",
+        lambda query_start: [
+            SimpleNamespace(
+                order_id="940612326",
+                order_number="3104",
+                customer_name="Cliente Teste",
+                seller_name="Juliana",
+                gross_amount=Decimal("120.00"),
+                discount_amount=Decimal("8.00"),
+                discount_percent=Decimal("6.67"),
+                issue_date_display="2026-07-27",
+                installments_count=1,
+                prazo_total_dias=0,
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.services.execution.PolicyEngine",
+        lambda rules: SimpleNamespace(
+            evaluate=lambda order: [
+                SimpleNamespace(
+                    policy_code="FAIXA_1",
+                    description="Faixa 1 permite pagamento à vista e desconto máximo de 5.00%.",
+                ),
+            ],
+        ),
+    )
+    monkeypatch.setattr(service.alert_service, "send", lambda **kwargs: (_ for _ in ()).throw(ValueError("RESEND_API_KEY não configurada.")))
+    monkeypatch.setattr("app.services.execution.write_runtime_event", lambda *args, **kwargs: None)
+
+    job_run = service.run(trigger_type="manual")
+
+    alerts = db_session.query(AlertSent).filter(AlertSent.dedupe_key == "FAIXA_1:940612326:2026-07-25").all()
+    assert job_run.status == "success"
+    assert len(alerts) == 1
+    assert alerts[0].job_run_id == job_run.id
+    assert alerts[0].status == "failed"
+    assert alerts[0].error_message == "RESEND_API_KEY não configurada."
 
 
 def test_manage_users_and_recipients(web_client) -> None:
@@ -386,6 +590,7 @@ def test_execution_route_and_assets(web_client, monkeypatch) -> None:
 
     execute = client.post("/runs/execute", follow_redirects=False)
     assert execute.status_code == 303
+    assert execute.headers["location"] == "/#online-log"
 
     health = client.get("/health")
     assert health.status_code == 200

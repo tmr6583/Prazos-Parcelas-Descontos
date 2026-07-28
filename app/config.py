@@ -27,13 +27,13 @@ class Settings(BaseModel):
     resend_retry_attempts: int = 3
     resend_retry_backoff_seconds: int = 2
 
-    olist_base_url: str = "https://erp.olist.com/"
+    olist_base_url: str = "https://api.tiny.com.br/public-api/v3/"
     olist_client_id: str = ""
     olist_client_secret: str = ""
     olist_redirect_uri: str = "http://localhost:3600/olist/callback"
     olist_auth_url: str = "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/auth"
     olist_token_url: str = "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token"
-    olist_orders_path: str = ""
+    olist_orders_path: str = "pedidos"
 
     resend_api_key: str = ""
     resend_from_email: EmailStr = Field(default="financeiro@betinalimpeza.com.br")
@@ -80,7 +80,7 @@ def _read_env() -> dict[str, Any]:
         "olist_client_id": ("OLIST_CLIENT_ID", ""),
         "olist_client_secret": ("OLIST_CLIENT_SECRET", ""),
         "olist_redirect_uri": ("OLIST_REDIRECT_URI", "http://localhost:3600/olist/callback"),
-        "olist_base_url": ("OLIST_BASE_URL", "https://erp.olist.com/"),
+        "olist_base_url": ("OLIST_BASE_URL", "https://api.tiny.com.br/public-api/v3/"),
         "olist_auth_url": (
             "OLIST_AUTH_URL",
             "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/auth",
@@ -89,7 +89,7 @@ def _read_env() -> dict[str, Any]:
             "OLIST_TOKEN_URL",
             "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token",
         ),
-        "olist_orders_path": ("OLIST_ORDERS_PATH", ""),
+        "olist_orders_path": ("OLIST_ORDERS_PATH", "pedidos"),
         "resend_api_key": ("RESEND_API_KEY", ""),
         "resend_from_email": ("RESEND_FROM_EMAIL", "financeiro@betinalimpeza.com.br"),
         "master_user_email": ("MASTER_USER_EMAIL", "admin@empresa.com"),

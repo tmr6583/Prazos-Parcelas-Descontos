@@ -56,8 +56,7 @@ select {
 }
 
 .topbar {
-  position: sticky;
-  top: 0;
+  position: static;
   z-index: 10;
   background: rgba(255, 255, 255, 0.88);
   border-bottom: 1px solid var(--border);
@@ -75,7 +74,7 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: 19px var(--space-6);
+  padding: 7px var(--space-6);
 }
 
 .app-main {
@@ -89,7 +88,7 @@ select {
 }
 
 .brand-logo-img {
-  width: 150px;
+  width: 75px;
   max-width: 100%;
   height: auto;
   display: block;
@@ -113,6 +112,10 @@ h3 {
 h1 {
   font-size: var(--text-xl);
   letter-spacing: -0.02em;
+}
+
+.topbar h1 {
+  font-size: 24px;
 }
 
 h2 {
@@ -140,7 +143,7 @@ h2 {
 }
 
 .dashboard-header {
-  padding: 15px var(--space-6);
+  padding: 11px var(--space-6);
 }
 
 .dashboard-header,
@@ -154,7 +157,7 @@ h2 {
 
 .stats-row {
   display: flex;
-  gap: var(--space-5);
+  gap: 14px;
   flex-wrap: wrap;
 }
 
@@ -165,13 +168,13 @@ h2 {
 .stat-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 120px;
 }
 
 .value {
   color: var(--accent);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -252,19 +255,20 @@ h2 {
 
 .log-panel {
   display: grid;
-  gap: var(--space-5);
+  gap: 14px;
+  padding: 18px 20px;
 }
 
 .log-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-4);
+  gap: 12px;
 }
 
 .log-highlight {
   display: grid;
-  gap: 2px;
-  padding: 7px;
+  gap: 1px;
+  padding: 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
@@ -278,15 +282,20 @@ h2 {
 }
 
 .log-main {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.1;
   color: var(--text);
 }
 
+.log-highlight .muted {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
 .log-tail {
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 8px;
+  padding: 11px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: #081c43;
@@ -347,35 +356,15 @@ h2 {
   flex-wrap: wrap;
 }
 
-.last-irregular-card {
-  display: grid;
-  gap: 12px;
-}
-
-.irregular-emphasis {
-  display: grid;
-  gap: 2px;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  border: 1px solid rgba(220, 38, 38, 0.14);
-  background: linear-gradient(180deg, rgba(220, 38, 38, 0.06) 0%, rgba(255, 255, 255, 1) 100%);
-}
-
-.irregular-order-number {
-  font-size: 22px;
-  color: var(--danger);
-  line-height: 1.1;
-}
-
-.irregular-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.compact-card {
-  gap: 8px;
-  padding: 12px;
+.panel-counter {
+  min-width: 40px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  color: var(--accent);
+  font-weight: 700;
+  text-align: center;
 }
 
 .empty-state-box {
@@ -476,8 +465,8 @@ textarea:focus {
 
 .integration-card {
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
+  gap: 8px;
+  padding: 12px 14px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -490,7 +479,22 @@ textarea:focus {
 .integration-overview {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-4);
+  gap: 12px;
+}
+
+.integration-overview-compact {
+  margin-top: 12px;
+}
+
+.integration-actions {
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.integration-actions form {
+  margin: 0;
 }
 
 .table-container {
@@ -519,6 +523,66 @@ textarea:focus {
   letter-spacing: 0.08em;
   position: sticky;
   top: 0;
+}
+
+#last-irregular-order .table-container {
+  overflow-x: auto;
+}
+
+#last-irregular-order .data-table {
+  table-layout: auto;
+}
+
+#last-irregular-order .data-table th,
+#last-irregular-order .data-table td {
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+#last-irregular-order .data-table th:nth-child(1),
+#last-irregular-order .data-table td:nth-child(1),
+#last-irregular-order .data-table th:nth-child(2),
+#last-irregular-order .data-table td:nth-child(2),
+#last-irregular-order .data-table th:nth-child(4),
+#last-irregular-order .data-table td:nth-child(4),
+#last-irregular-order .data-table th:nth-child(5),
+#last-irregular-order .data-table td:nth-child(5),
+#last-irregular-order .data-table th:nth-child(7),
+#last-irregular-order .data-table td:nth-child(7) {
+  white-space: nowrap;
+}
+
+#last-irregular-order .data-table th:nth-child(3),
+#last-irregular-order .data-table td:nth-child(3),
+#last-irregular-order .data-table th:nth-child(6),
+#last-irregular-order .data-table td:nth-child(6) {
+  white-space: normal;
+  min-width: 180px;
+}
+
+#last-irregular-order .data-table th:nth-child(1),
+#last-irregular-order .data-table td:nth-child(1) {
+  width: 92px;
+}
+
+#last-irregular-order .data-table th:nth-child(2),
+#last-irregular-order .data-table td:nth-child(2) {
+  width: 118px;
+}
+
+#last-irregular-order .data-table th:nth-child(4),
+#last-irregular-order .data-table td:nth-child(4) {
+  width: 118px;
+}
+
+#last-irregular-order .data-table th:nth-child(5),
+#last-irregular-order .data-table td:nth-child(5) {
+  width: 118px;
+}
+
+#last-irregular-order .data-table th:nth-child(7),
+#last-irregular-order .data-table td:nth-child(7) {
+  width: 150px;
 }
 
 .text-center {
@@ -594,7 +658,6 @@ textarea:focus {
 
 @media (max-width: 1100px) {
   .log-grid,
-  .irregular-grid,
   .integration-grid,
   .integration-overview,
   .main-grid {
@@ -604,7 +667,7 @@ textarea:focus {
 
 @media (max-width: 760px) {
   .topbar-inner {
-    padding: 15px var(--space-4);
+    padding: 6px var(--space-4);
   }
 
   .app-main {

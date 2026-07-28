@@ -96,8 +96,8 @@ class OlistConnectionSetting(Base):
         String(500),
         default="https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token",
     )
-    api_base_url: Mapped[str] = mapped_column(String(500), default="https://erp.olist.com/")
-    orders_path: Mapped[str] = mapped_column(String(255), default="")
+    api_base_url: Mapped[str] = mapped_column(String(500), default="https://api.tiny.com.br/public-api/v3/")
+    orders_path: Mapped[str] = mapped_column(String(255), default="pedidos")
     oauth_state: Mapped[str | None] = mapped_column(String(255), nullable=True)
     oauth_state_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_callback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -121,6 +121,27 @@ class JobRun(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     alerts: Mapped[list[AlertSent]] = relationship(back_populates="job_run")
+    identified_orders: Mapped[list[IdentifiedOrder]] = relationship(back_populates="job_run")
+
+
+class IdentifiedOrder(Base):
+    __tablename__ = "identified_orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_run_id: Mapped[int] = mapped_column(ForeignKey("job_runs.id"), index=True)
+    order_id: Mapped[str] = mapped_column(String(100), index=True)
+    order_number: Mapped[str] = mapped_column(String(100))
+    policy_code: Mapped[str] = mapped_column(String(50), index=True)
+    violation_description: Mapped[str] = mapped_column(Text)
+    sale_date_display: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    gross_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    discount_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    discount_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    seller_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    job_run: Mapped[JobRun] = relationship(back_populates="identified_orders")
 
 
 class AlertSent(Base):
