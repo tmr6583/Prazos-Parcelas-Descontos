@@ -22,12 +22,13 @@ def test_login_and_dashboard_render(web_client, monkeypatch) -> None:
     monkeypatch.setattr(
         AdminService,
         "get_online_log_lines",
-        lambda self, limit=10: [f"[27/07/2026 17:30:{index:02d}] linha {index}" for index in range(10)],
+        lambda self, limit=15: [f"[27/07/2026 17:30:{index:02d}] linha {index}" for index in range(15)],
     )
 
     response = client.get("/login")
     assert response.status_code == 200
-    assert "Sistema de Alertas ERP" in response.text
+    assert "Alertas de Pedidos" in response.text
+    assert "Sistema de Alertas ERP" not in response.text
     assert "cagoete" not in response.text
     assert "Betina Soluções em Limpeza" not in response.text
 
@@ -45,13 +46,33 @@ def test_login_and_dashboard_render(web_client, monkeypatch) -> None:
     assert "URL do token OAuth" in dashboard.text
     assert "Log online" in dashboard.text
     assert "Pedidos Identificados" in dashboard.text
-    assert "Últimas 10 linhas do log" in dashboard.text
+    assert "Bem-vindo," not in dashboard.text
+    assert "Executar rotina agora" in dashboard.text
+    assert "Integração Olist" in dashboard.text
+    assert "Últimas 15 linhas do log" in dashboard.text
     assert "[27/07/2026 17:30:09] linha 9" in dashboard.text
+    assert "[27/07/2026 17:30:14] linha 14" in dashboard.text
     assert "Fluxo OAuth2 com configuração persistida na aplicação, seguindo o padrão do Albertina." not in dashboard.text
     assert "Frequência, janela de busca e remetente para os alertas." not in dashboard.text
     assert "As regras são dados administráveis pelo usuário. Salvar gera uma nova versão lógica." not in dashboard.text
-    assert dashboard.text.index("Log online") < dashboard.text.index("Integração Olist")
-    assert dashboard.text.index("Integração Olist") < dashboard.text.index("Configurações gerais")
+    assert "Ver integração Olist" not in dashboard.text
+    assert "Executar agora" not in dashboard.text.replace("Executar rotina agora", "")
+    assert "Frequência" not in dashboard.text or dashboard.text.index("Frequência") > dashboard.text.index("Configurações gerais")
+    assert dashboard.text.index("dashboard-header") < dashboard.text.index("Log online")
+    assert dashboard.text.index("Log online") < dashboard.text.index("Pedidos Identificados")
+    assert dashboard.text.index("Pedidos Identificados") < dashboard.text.index("Destinatários")
+    assert dashboard.text.index("Destinatários") < dashboard.text.index("Usuários")
+    assert dashboard.text.index("Usuários") < dashboard.text.index("Histórico de execuções")
+    assert dashboard.text.index("Histórico de execuções") < dashboard.text.index("Alertas enviados")
+    left_col_start = dashboard.text.index("column-left")
+    left_col_end = dashboard.text.index("column-right")
+    left_col = dashboard.text[left_col_start:left_col_end]
+    right_col = dashboard.text[left_col_end:]
+    assert "Destinatários" in left_col
+    assert "Usuários" in left_col
+    assert "Histórico de execuções" in right_col
+    assert "Alertas enviados" in right_col
+    assert "Versão política" not in dashboard.text
 
 
 def test_update_settings_and_policy_rules(web_client) -> None:
@@ -63,7 +84,12 @@ def test_update_settings_and_policy_rules(web_client) -> None:
         data={
             "frequency_minutes": "45",
             "dias_retroativos_emissao": "10",
-            "resend_from_email": "financeiro@betinalimpeza.com.br",
+            "email_from_name": "Betina Limpeza",
+            "email_from_email": "financeiro@betinalimpeza.com.br",
+            "smtp_host": "email-ssl.com.br",
+            "smtp_port": "465",
+            "smtp_user": "financeiro@betinalimpeza.com.br",
+            "smtp_password": "",
         },
         follow_redirects=False,
     )
@@ -73,6 +99,11 @@ def test_update_settings_and_policy_rules(web_client) -> None:
     settings_row = db_session.get(Setting, 1)
     assert settings_row.frequency_minutes == 45
     assert settings_row.dias_retroativos_emissao == 10
+    assert settings_row.smtp_host == "email-ssl.com.br"
+    assert settings_row.smtp_port == 465
+    assert settings_row.smtp_user == "financeiro@betinalimpeza.com.br"
+    assert settings_row.email_from_name == "Betina Limpeza"
+    assert settings_row.email_from_email == "financeiro@betinalimpeza.com.br"
 
     policy_response = client.post(
         "/policy-rules",
@@ -212,7 +243,7 @@ def test_online_log_merges_runtime_and_control_entries(db_session, monkeypatch, 
         expires_at="2026-07-27T22:15:00+00:00",
     )
 
-    lines = AdminService(db_session).get_online_log_lines(limit=10)
+    lines = AdminService(db_session).get_online_log_lines(limit=15)
     assert any("Inicio solicitado." in line for line in lines)
     assert any("Olist conectada com sucesso." in line for line in lines)
 
@@ -280,7 +311,7 @@ def test_dashboard_shows_oauth_events_in_online_log(web_client, monkeypatch, tmp
 
 def test_dashboard_formats_olist_datetimes_in_sao_paulo(web_client, monkeypatch) -> None:
     client, db_session, _ = web_client
-    monkeypatch.setattr(AdminService, "get_online_log_lines", lambda self, limit=10: [])
+    monkeypatch.setattr(AdminService, "get_online_log_lines", lambda self, limit=15: [])
     login(client)
 
     config = db_session.get(OlistConnectionSetting, 1)
@@ -309,7 +340,7 @@ def test_dashboard_formats_olist_datetimes_in_sao_paulo(web_client, monkeypatch)
 
 def test_dashboard_shows_identifed_orders_panel(web_client, monkeypatch) -> None:
     client, db_session, _ = web_client
-    monkeypatch.setattr(AdminService, "get_online_log_lines", lambda self, limit=10: [])
+    monkeypatch.setattr(AdminService, "get_online_log_lines", lambda self, limit=15: [])
     login(client)
 
     job_run = JobRun(
@@ -499,7 +530,7 @@ def test_execution_service_reuses_failed_alert_record_without_integrity_error(db
         dedupe_key="FAIXA_1:940612326:2026-07-25",
         email_to="thiago@betinalimpeza.com.br",
         status="failed",
-        error_message="RESEND_API_KEY não configurada.",
+        error_message="Senha de e-mail não configurada.",
     )
     db_session.add(existing_alert)
     db_session.commit()
@@ -534,7 +565,7 @@ def test_execution_service_reuses_failed_alert_record_without_integrity_error(db
             ],
         ),
     )
-    monkeypatch.setattr(service.alert_service, "send", lambda **kwargs: (_ for _ in ()).throw(ValueError("RESEND_API_KEY não configurada.")))
+    monkeypatch.setattr(service.alert_service, "send", lambda **kwargs: (_ for _ in ()).throw(ValueError("Senha de e-mail não configurada.")))
     monkeypatch.setattr("app.services.execution.write_runtime_event", lambda *args, **kwargs: None)
 
     job_run = service.run(trigger_type="manual")
@@ -544,7 +575,7 @@ def test_execution_service_reuses_failed_alert_record_without_integrity_error(db
     assert len(alerts) == 1
     assert alerts[0].job_run_id == job_run.id
     assert alerts[0].status == "failed"
-    assert alerts[0].error_message == "RESEND_API_KEY não configurada."
+    assert alerts[0].error_message == "Senha de e-mail não configurada."
 
 
 def test_manage_users_and_recipients(web_client) -> None:
@@ -590,7 +621,16 @@ def test_execution_route_and_assets(web_client, monkeypatch) -> None:
 
     execute = client.post("/runs/execute", follow_redirects=False)
     assert execute.status_code == 303
-    assert execute.headers["location"] == "/#online-log"
+    assert execute.headers["location"] == "/#execution-banner"
+
+    dashboard = client.get("/")
+    assert dashboard.status_code == 200
+    dashboard_text = dashboard.text
+    assert "execution-banner" in dashboard_text
+    assert "Rotina executada com status success. Pedidos avaliados: 3. Irregulares: 1." in dashboard_text
+    assert dashboard_text.index("dashboard-header") < dashboard_text.index('id="execution-banner"')
+    assert dashboard_text.index('id="execution-banner"') < dashboard_text.index('id="online-log"')
+    assert dashboard_text.index('class="execution-banner"') < dashboard_text.index('class="execution-banner-message"')
 
     health = client.get("/health")
     assert health.status_code == 200

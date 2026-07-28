@@ -8,3 +8,14 @@
 [27/07/2026 22:49:00] Aplicacao encerrada com sucesso.
 [27/07/2026 22:49:00] Inicio solicitado.
 [27/07/2026 22:49:10] Aplicacao iniciada com PID 1124.
+[28/07/2026 15:51:47] Inicio solicitado.
+[28/07/2026 15:51:52] Encerrando PID orfao monitorado 1124 antes da inicializacao.
+[28/07/2026 15:52:14] Falha ao encerrar o PID orfao monitorado 1124.
+[28/07/2026 15:53:02] Encerramento solicitado.
+[28/07/2026 15:53:05] Aplicacao encerrada com sucesso.
+[28/07/2026 15:53:11] Inicio solicitado.
+[28/07/2026 15:53:16] Aplicacao iniciada com PID 24008.
+[28/07/2026 16:07:43] Encerramento solicitado.
+[28/07/2026 16:07:46] Aplicacao encerrada com sucesso.
+[28/07/2026 16:07:50] Inicio solicitado.
+[28/07/2026 16:07:55] Aplicacao iniciada com PID 23576.

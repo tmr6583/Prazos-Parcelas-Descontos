@@ -11,5 +11,13 @@ default_dias_retroativos_emissao = 7
 retry_attempts = 3
 retry_backoff_seconds = 2
 
+[email]
+smtp_host = "email-ssl.com.br"
+smtp_port = 465
+smtp_user = ""
+smtp_password = ""
+from_name = "Betina Limpeza"
+from_email = "financeiro@betinalimpeza.com.br"
+
 [logging]
 level = "INFO"

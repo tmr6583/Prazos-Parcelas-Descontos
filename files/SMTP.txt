@@ -1,0 +1,6 @@
+- SMTP_HOST=email-ssl.com.br
+- SMTP_PORT=465
+- SMTP_USER=financeiro@betinalimpeza.com.br
+- SMTP_PASSWORD=Betin@010123
+- EMAIL_FROM_NAME=Betina Limpeza
+- EMAIL_FROM_EMAIL=financeiro@betinalimpeza.com.br

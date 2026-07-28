@@ -45,6 +45,12 @@ class Setting(Base):
     dias_retroativos_emissao: Mapped[int] = mapped_column(Integer, default=7)
     timezone: Mapped[str] = mapped_column(String(100), default="America/Sao_Paulo")
     resend_from_email: Mapped[str] = mapped_column(String(255), default="financeiro@betinalimpeza.com.br")
+    smtp_host: Mapped[str] = mapped_column(String(255), default="email-ssl.com.br")
+    smtp_port: Mapped[int] = mapped_column(Integer, default=465)
+    smtp_user: Mapped[str] = mapped_column(String(255), default="")
+    smtp_password: Mapped[str] = mapped_column(Text, default="")
+    email_from_name: Mapped[str] = mapped_column(String(255), default="Betina Limpeza")
+    email_from_email: Mapped[str] = mapped_column(String(255), default="financeiro@betinalimpeza.com.br")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

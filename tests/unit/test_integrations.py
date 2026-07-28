@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import base64
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 
 from app.config import Settings
 from app.models import Setting
@@ -18,6 +18,37 @@ class DummyResponse:
 
     def json(self) -> dict:
         return self.payload
+
+
+class DummySMTPSSL:
+    def __init__(self, host: str, port: int, context: object, timeout: int) -> None:
+        self.host = host
+        self.port = port
+        self.context = context
+        self.timeout = timeout
+        self.attempts: list[dict] = []
+
+    def __enter__(self) -> "DummySMTPSSL":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def ehlo(self) -> None:
+        self.attempts.append({"action": "ehlo"})
+
+    def login(self, username: str, password: str) -> None:
+        self.attempts.append({"action": "login", "username": username, "password": password})
+
+    def sendmail(self, from_addr: str, to_addrs: list[str], message: str) -> None:
+        self.attempts.append(
+            {
+                "action": "sendmail",
+                "from_addr": from_addr,
+                "to_addrs": to_addrs,
+                "message": message,
+            },
+        )
 
 
 def test_refresh_token_persists_new_tokens(db_session, monkeypatch) -> None:
@@ -52,7 +83,7 @@ def test_refresh_token_persists_new_tokens(db_session, monkeypatch) -> None:
     assert normalized_expires_at > datetime.now(UTC) + timedelta(minutes=50)
 
 
-def test_alert_service_retries_and_succeeds(db_session, monkeypatch) -> None:
+def test_alert_service_smtp_retries_and_succeeds(db_session, monkeypatch) -> None:
     db_session.add(
         Setting(
             id=1,
@@ -60,27 +91,65 @@ def test_alert_service_retries_and_succeeds(db_session, monkeypatch) -> None:
             dias_retroativos_emissao=7,
             timezone="America/Sao_Paulo",
             resend_from_email="financeiro@betinalimpeza.com.br",
+            smtp_host="email-ssl.com.br",
+            smtp_port=465,
+            smtp_user="financeiro@betinalimpeza.com.br",
+            smtp_password="senha-atual",
+            email_from_name="Betina Limpeza",
+            email_from_email="financeiro@betinalimpeza.com.br",
         ),
     )
     db_session.commit()
 
     settings = Settings(
-        resend_api_key="resend-key",
-        resend_retry_attempts=3,
-        resend_retry_backoff_seconds=0,
+        email_retry_attempts=3,
+        email_retry_backoff_seconds=0,
+        smtp_host="email-ssl.com.br",
+        smtp_port=465,
+        smtp_user="financeiro@betinalimpeza.com.br",
+        smtp_password="senha-atual",
+        email_from_name="Betina Limpeza",
+        email_from_email="financeiro@betinalimpeza.com.br",
     )
     service = AlertService(db_session, settings)
-    attempts = {"count": 0}
+    attempts_count = {"count": 0}
+    last_instance: DummySMTPSSL | None = None
 
-    def fake_post(url: str, headers: dict, json: dict, timeout: float):
-        attempts["count"] += 1
-        if attempts["count"] < 3:
-            raise RuntimeError("falha temporaria")
-        return DummyResponse({"id": "email-123"})
+    def fake_smtp_ssl(host: str, port: int, context: object, timeout: int) -> DummySMTPSSL:
+        attempts_count["count"] += 1
+        nonlocal last_instance
+        instance = DummySMTPSSL(host, port, context, timeout)
+        last_instance = instance
+        if attempts_count["count"] < 3:
 
-    monkeypatch.setattr("app.services.alerts.httpx.post", fake_post)
+            class FailingSMTPSSL(DummySMTPSSL):
+                def sendmail(self, from_addr, to_addrs, message):
+                    super().sendmail(from_addr, to_addrs, message)
+                    raise RuntimeError("falha temporaria")
+
+            failing = FailingSMTPSSL(host, port, context, timeout)
+            last_instance = failing
+            return failing
+        return instance
+
+    monkeypatch.setattr("app.services.alerts.smtplib.SMTP_SSL", fake_smtp_ssl)
 
     message_id = service.send("destino@empresa.com", "Assunto", "<p>teste</p>")
 
-    assert message_id == "email-123"
-    assert attempts["count"] == 3
+    assert message_id == "smtp:email-ssl.com.br:465"
+    assert attempts_count["count"] == 3
+    assert last_instance is not None
+    login_attempt = next(item for item in last_instance.attempts if item["action"] == "login")
+    assert login_attempt["username"] == "financeiro@betinalimpeza.com.br"
+    assert login_attempt["password"] == "senha-atual"
+    sendmail_attempts = [item for item in last_instance.attempts if item["action"] == "sendmail"]
+    assert len(sendmail_attempts) >= 1
+    assert "Betina Limpeza" in sendmail_attempts[-1]["from_addr"]
+    assert "financeiro@betinalimpeza.com.br" in sendmail_attempts[-1]["from_addr"]
+    assert sendmail_attempts[-1]["to_addrs"] == ["destino@empresa.com"]
+    message_text = sendmail_attempts[-1]["message"]
+    assert "Subject: Assunto" in message_text
+    assert "multipart/alternative" in message_text
+    assert "PHA+dGVzdGU8L3A+" in message_text or "<p>teste</p>" in base64.b64decode(
+        message_text.split("PHA+")[1].split("=")[0] + "=="
+    ).decode("utf-8")

@@ -84,19 +84,41 @@ def _bootstrap() -> None:
 
 def _ensure_runtime_schema() -> None:
     inspector = inspect(engine)
-    columns = {column["name"] for column in inspector.get_columns("identified_orders")} if inspector.has_table("identified_orders") else set()
-    missing_columns = {
-        "sale_date_display": "VARCHAR(100)",
-        "customer_name": "VARCHAR(255)",
-        "gross_amount": "NUMERIC(12, 2)",
-        "discount_amount": "NUMERIC(12, 2)",
-        "discount_percent": "NUMERIC(5, 2)",
-    }
-    pending_columns = {name: ddl for name, ddl in missing_columns.items() if name not in columns}
-    if pending_columns:
-        with engine.begin() as connection:
-            for column_name, ddl in pending_columns.items():
-                connection.execute(text(f"ALTER TABLE identified_orders ADD COLUMN {column_name} {ddl}"))
+
+    if inspector.has_table("identified_orders"):
+        identified_columns = {column["name"] for column in inspector.get_columns("identified_orders")}
+        missing_identified = {
+            "sale_date_display": "VARCHAR(100)",
+            "customer_name": "VARCHAR(255)",
+            "gross_amount": "NUMERIC(12, 2)",
+            "discount_amount": "NUMERIC(12, 2)",
+            "discount_percent": "NUMERIC(5, 2)",
+        }
+        pending_identified = {name: ddl for name, ddl in missing_identified.items() if name not in identified_columns}
+        if pending_identified:
+            with engine.begin() as connection:
+                for column_name, ddl in pending_identified.items():
+                    connection.execute(text(f"ALTER TABLE identified_orders ADD COLUMN {column_name} {ddl}"))
+
+    if inspector.has_table("settings"):
+        settings_columns = {column["name"] for column in inspector.get_columns("settings")}
+        missing_settings = {
+            "smtp_host": ("VARCHAR(255)", "'email-ssl.com.br'"),
+            "smtp_port": ("INTEGER", "465"),
+            "smtp_user": ("VARCHAR(255)", "''"),
+            "smtp_password": ("TEXT", "''"),
+            "email_from_name": ("VARCHAR(255)", "'Betina Limpeza'"),
+            "email_from_email": ("VARCHAR(255)", "'financeiro@betinalimpeza.com.br'"),
+        }
+        pending_settings = {name: spec for name, spec in missing_settings.items() if name not in settings_columns}
+        if pending_settings:
+            with engine.begin() as connection:
+                for column_name, (ddl, default_value) in pending_settings.items():
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE settings ADD COLUMN {column_name} {ddl} NOT NULL DEFAULT {default_value}",
+                        ),
+                    )
 
 
 @asynccontextmanager
@@ -120,8 +142,16 @@ def flash(request: Request, message: str, category: str = "info") -> None:
     request.session["flash"] = {"message": message, "category": category}
 
 
+def flash_execution_result(request: Request, message: str, category: str) -> None:
+    request.session["execution_banner"] = {"message": message, "category": category}
+
+
 def consume_flash(request: Request) -> dict[str, str] | None:
     return request.session.pop("flash", None)
+
+
+def consume_execution_banner(request: Request) -> dict[str, str] | None:
+    return request.session.pop("execution_banner", None)
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -179,7 +209,7 @@ def render_dashboard(request: Request, db: Session, user: User):
     policies = policy_service.list_current_rules()
     token = admin_service.get_olist_token()
     olist_config = olist_service.get_connection_settings()
-    online_log_lines = admin_service.get_online_log_lines(limit=10)
+    online_log_lines = admin_service.get_online_log_lines(limit=15)
 
     last_run = runs[0] if runs else None
     identified_orders = admin_service.list_identified_orders_for_run(last_run.id if last_run else None)
@@ -190,6 +220,7 @@ def render_dashboard(request: Request, db: Session, user: User):
             "request": request,
             "user": user,
             "flash": consume_flash(request),
+            "execution_banner": consume_execution_banner(request),
             "config": config,
             "users": users,
             "recipients": recipients,
@@ -280,7 +311,13 @@ async def update_settings(request: Request, db: Session = Depends(get_db)):
         SettingsService(db).update(
             frequency_minutes=int(str(form.get("frequency_minutes", "0"))),
             dias_retroativos_emissao=int(str(form.get("dias_retroativos_emissao", "0"))),
-            resend_from_email=str(form.get("resend_from_email", "")).strip().lower(),
+            resend_from_email=str(form.get("email_from_email", form.get("resend_from_email", ""))).strip().lower(),
+            smtp_host=str(form.get("smtp_host", "")),
+            smtp_port=int(str(form.get("smtp_port", "0")) or "0"),
+            smtp_user=str(form.get("smtp_user", "")),
+            smtp_password=str(form.get("smtp_password", "")),
+            email_from_name=str(form.get("email_from_name", "")),
+            email_from_email=str(form.get("email_from_email", form.get("resend_from_email", ""))).strip().lower(),
         )
         app.state.scheduler.reschedule()
         flash(request, "Configurações atualizadas.", "success")
@@ -590,10 +627,10 @@ def execute_run(request: Request, db: Session = Depends(get_db)):
             f"Pedidos avaliados: {job_run.orders_evaluated}. "
             f"Irregulares: {job_run.orders_irregular}."
         )
-        flash(request, message, "success" if job_run.status == "success" else "warning")
+        flash_execution_result(request, message, "success" if job_run.status == "success" else "warning")
     except Exception as exc:
-        flash(request, str(exc), "error")
-    return RedirectResponse(url="/#online-log", status_code=status.HTTP_303_SEE_OTHER)
+        flash_execution_result(request, str(exc), "error")
+    return RedirectResponse(url="/#execution-banner", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/runs")

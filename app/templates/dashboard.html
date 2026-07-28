@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Painel | Sistema de Alertas ERP{% endblock %}
+{% block title %}Painel | Alertas de Pedidos{% endblock %}
 
 {% block body %}
 <header class="topbar">
@@ -8,7 +8,7 @@
         <div class="brand-box">
             <img src="{{ logo_href }}" alt="Betina Soluções em Limpeza" class="brand-logo-img">
             <div>
-                <div class="eyebrow">Sistema de Alertas ERP</div>
+                <div class="eyebrow">Alertas de Pedidos</div>
                 <h1>Painel administrativo</h1>
             </div>
         </div>
@@ -26,28 +26,24 @@
     {% endif %}
 
     <section class="dashboard-header glass">
-        <div>
-            <h2>Bem-vindo, {{ user.email }}</h2>
-        </div>
-        <div class="stats-row">
-            <div class="stat-card">
-                <span class="label">Frequência</span>
-                <span class="value">{{ config.frequency_minutes }} min</span>
-            </div>
-            <div class="stat-card">
-                <span class="label">Dias retroativos</span>
-                <span class="value">{{ config.dias_retroativos_emissao }}</span>
-            </div>
-            <div class="stat-card">
-                <span class="label">Destinatários ativos</span>
-                <span class="value">{{ recipients | selectattr("is_active") | list | length }}</span>
-            </div>
-            <div class="stat-card">
-                <span class="label">Última execução</span>
-                <span class="value">{% if last_run %}{{ last_run.status }}{% else %}—{% endif %}</span>
+        <div class="welcome-main compact-welcome welcome-only-actions">
+            <div class="welcome-actions">
+                <form method="post" action="/runs/execute" class="inline-form compact-inline">
+                    <button type="submit" class="btn btn-primary">Executar rotina agora</button>
+                </form>
+                <a href="#settings" class="btn btn-secondary">Ajustar configurações</a>
+                <a href="#policies" class="btn btn-secondary">Revisar políticas</a>
+                <a href="#recipients" class="btn btn-secondary">Gerenciar destinatários</a>
+                <a href="#integration" class="btn btn-secondary">Integração Olist</a>
             </div>
         </div>
     </section>
+
+    {% if execution_banner %}
+    <section class="execution-banner" id="execution-banner">
+        <div class="execution-banner-message">{{ execution_banner.message }}</div>
+    </section>
+    {% endif %}
 
     <section class="glass panel log-panel" id="online-log">
         <div class="panel-header">
@@ -122,20 +118,14 @@
         <div class="log-tail">
             <div class="log-tail-header">
                 <div>
-                    <strong>Últimas 10 linhas do log</strong>
+                    <strong>Últimas 15 linhas do log</strong>
                     <div class="muted">Atualização em tempo de carregamento da tela.</div>
                 </div>
-                <div class="log-actions">
-                    <form method="post" action="/runs/execute">
-                        <button type="submit" class="btn btn-primary">Executar agora</button>
-                    </form>
-                    <a href="#integration" class="btn btn-secondary">Ver integração Olist</a>
-                </div>
             </div>
-            <div class="log-tail-body">
+            <div class="log-tail-body log-tight">
                 {% if online_log_lines %}
                     {% for log_line in online_log_lines %}
-                    <div class="log-line">{{ log_line }}</div>
+                    <div class="log-line log-line-tight">{{ log_line }}</div>
                     {% endfor %}
                 {% else %}
                     <div class="log-line log-line-empty">Nenhuma linha de log disponível no momento.</div>
@@ -274,8 +264,28 @@
                 <input type="number" min="1" name="dias_retroativos_emissao" value="{{ config.dias_retroativos_emissao }}" required>
             </label>
             <label>
-                <span>Remetente Resend</span>
-                <input type="email" name="resend_from_email" value="{{ config.resend_from_email }}" required>
+                <span>Nome do remetente</span>
+                <input type="text" name="email_from_name" value="{{ config.email_from_name }}" required>
+            </label>
+            <label>
+                <span>E-mail do remetente</span>
+                <input type="email" name="email_from_email" value="{{ config.email_from_email if config.email_from_email else config.resend_from_email }}" required>
+            </label>
+            <label>
+                <span>Servidor SMTP</span>
+                <input type="text" name="smtp_host" value="{{ config.smtp_host }}" required>
+            </label>
+            <label>
+                <span>Porta SMTP</span>
+                <input type="number" min="1" name="smtp_port" value="{{ config.smtp_port }}" required>
+            </label>
+            <label>
+                <span>Usuário</span>
+                <input type="text" name="smtp_user" value="{{ config.smtp_user }}" required>
+            </label>
+            <label>
+                <span>Senha</span>
+                <input type="password" name="smtp_password" placeholder="Deixe vazio para manter a atual">
             </label>
             <div class="form-actions span-all">
                 <button type="submit" class="btn btn-primary">Salvar configurações</button>
@@ -354,142 +364,142 @@
         </template>
     </section>
 
-    <div class="main-grid">
-        <section class="glass panel" id="recipients">
-            <div class="panel-header">
-                <div>
-                    <h3>Destinatários</h3>
-                </div>
-            </div>
-            <form method="post" action="/recipients" class="inline-form">
-                <input type="email" name="email" placeholder="email@empresa.com" required>
-                <button type="submit" class="btn btn-primary">Adicionar</button>
-            </form>
-            <div class="list-stack">
-                {% for recipient in recipients %}
-                <div class="list-item">
+    <div class="columns-grid">
+        <div class="column-stack" id="column-left">
+            <section class="glass panel" id="recipients">
+                <div class="panel-header">
                     <div>
-                        <strong>{{ recipient.email }}</strong>
-                        <div class="muted">{% if recipient.is_active %}Ativo{% else %}Inativo{% endif %}</div>
-                    </div>
-                    <div class="btn-group">
-                        <form method="post" action="/recipients/{{ recipient.id }}/toggle">
-                            <button type="submit" class="btn btn-small btn-secondary">{% if recipient.is_active %}Desativar{% else %}Ativar{% endif %}</button>
-                        </form>
-                        <form method="post" action="/recipients/{{ recipient.id }}/delete">
-                            <button type="submit" class="btn btn-small btn-danger">Excluir</button>
-                        </form>
+                        <h3>Destinatários</h3>
                     </div>
                 </div>
-                {% endfor %}
-            </div>
-        </section>
+                <form method="post" action="/recipients" class="inline-form">
+                    <input type="email" name="email" placeholder="email@empresa.com" required>
+                    <button type="submit" class="btn btn-primary">Adicionar</button>
+                </form>
+                <div class="list-stack">
+                    {% for recipient in recipients %}
+                    <div class="list-item">
+                        <div>
+                            <strong>{{ recipient.email }}</strong>
+                            <div class="muted">{% if recipient.is_active %}Ativo{% else %}Inativo{% endif %}</div>
+                        </div>
+                        <div class="btn-group">
+                            <form method="post" action="/recipients/{{ recipient.id }}/toggle">
+                                <button type="submit" class="btn btn-small btn-secondary">{% if recipient.is_active %}Desativar{% else %}Ativar{% endif %}</button>
+                            </form>
+                            <form method="post" action="/recipients/{{ recipient.id }}/delete">
+                                <button type="submit" class="btn btn-small btn-danger">Excluir</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
 
-        <section class="glass panel" id="users">
-            <div class="panel-header">
-                <div>
-                    <h3>Usuários</h3>
-                </div>
-            </div>
-            <form method="post" action="/users" class="inline-form two-fields">
-                <input type="email" name="email" placeholder="novo.usuario@empresa.com" required>
-                <input type="password" name="password" placeholder="Senha inicial" required minlength="6">
-                <button type="submit" class="btn btn-primary">Criar</button>
-            </form>
-            <div class="list-stack">
-                {% for listed_user in users %}
-                <div class="list-item">
+            <section class="glass panel" id="users">
+                <div class="panel-header">
                     <div>
-                        <strong>{{ listed_user.email }}</strong>
-                        <div class="muted">{% if listed_user.is_master %}Usuário mestre{% else %}Administrador{% endif %}</div>
-                    </div>
-                    <div class="btn-group wrap">
-                        <form method="post" action="/users/{{ listed_user.id }}/reset-password" class="inline-form compact-inline">
-                            <input type="password" name="password" placeholder="Nova senha" required minlength="6">
-                            <button type="submit" class="btn btn-small btn-secondary">Redefinir</button>
-                        </form>
-                        {% if not listed_user.is_master %}
-                        <form method="post" action="/users/{{ listed_user.id }}/delete">
-                            <button type="submit" class="btn btn-small btn-danger">Excluir</button>
-                        </form>
-                        {% endif %}
+                        <h3>Usuários</h3>
                     </div>
                 </div>
-                {% endfor %}
-            </div>
-        </section>
-    </div>
-
-    <div class="main-grid bottom-grid">
-        <section class="glass panel" id="runs">
-            <div class="panel-header">
-                <div>
-                    <h3>Histórico de execuções</h3>
+                <form method="post" action="/users" class="inline-form two-fields">
+                    <input type="email" name="email" placeholder="novo.usuario@empresa.com" required>
+                    <input type="password" name="password" placeholder="Senha inicial" required minlength="6">
+                    <button type="submit" class="btn btn-primary">Criar</button>
+                </form>
+                <div class="list-stack">
+                    {% for listed_user in users %}
+                    <div class="list-item">
+                        <div>
+                            <strong>{{ listed_user.email }}</strong>
+                            <div class="muted">{% if listed_user.is_master %}Usuário mestre{% else %}Administrador{% endif %}</div>
+                        </div>
+                        <div class="btn-group wrap">
+                            <form method="post" action="/users/{{ listed_user.id }}/reset-password" class="inline-form compact-inline">
+                                <input type="password" name="password" placeholder="Nova senha" required minlength="6">
+                                <button type="submit" class="btn btn-small btn-secondary">Redefinir</button>
+                            </form>
+                            {% if not listed_user.is_master %}
+                            <form method="post" action="/users/{{ listed_user.id }}/delete">
+                                <button type="submit" class="btn btn-small btn-danger">Excluir</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
-            </div>
-            <div class="table-container">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Início</th>
-                            <th>Status</th>
-                            <th>Tipo</th>
-                            <th>Versão política</th>
-                            <th>Avaliados</th>
-                            <th>Irregulares</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for run in runs %}
-                        <tr>
-                            <td>{{ run.started_at | datetime_sp }}</td>
-                            <td>{{ run.status }}</td>
-                            <td>{{ run.trigger_type }}</td>
-                            <td>{{ run.policy_version_group if run.policy_version_group else "—" }}</td>
-                            <td>{{ run.orders_evaluated }}</td>
-                            <td>{{ run.orders_irregular }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="6" class="text-center">Nenhuma execução registrada.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </section>
+            </section>
+        </div>
 
-        <section class="glass panel" id="alerts">
-            <div class="panel-header">
-                <div>
-                    <h3>Alertas enviados</h3>
+        <div class="column-stack" id="column-right">
+            <section class="glass panel" id="runs">
+                <div class="panel-header">
+                    <div>
+                        <h3>Histórico de execuções</h3>
+                    </div>
                 </div>
-            </div>
-            <div class="table-container">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Pedido</th>
-                            <th>Regra</th>
-                            <th>E-mail</th>
-                            <th>Status</th>
-                            <th>Envio</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for alert in alerts %}
-                        <tr>
-                            <td>{{ alert.order_number }}</td>
-                            <td>{{ alert.policy_code }}</td>
-                            <td>{{ alert.email_to }}</td>
-                            <td>{{ alert.status }}</td>
-                            <td>{{ alert.sent_at | datetime_sp }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="5" class="text-center">Nenhum alerta registrado.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </section>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Início</th>
+                                <th>Status</th>
+                                <th>Tipo</th>
+                                <th>Avaliados</th>
+                                <th>Irregulares</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for run in runs %}
+                            <tr>
+                                <td>{{ run.started_at | datetime_sp }}</td>
+                                <td>{{ run.status }}</td>
+                                <td>{{ run.trigger_type }}</td>
+                                <td>{{ run.orders_evaluated }}</td>
+                                <td>{{ run.orders_irregular }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center">Nenhuma execução registrada.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="glass panel" id="alerts">
+                <div class="panel-header">
+                    <div>
+                        <h3>Alertas enviados</h3>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Pedido</th>
+                                <th>Regra</th>
+                                <th>E-mail</th>
+                                <th>Status</th>
+                                <th>Envio</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for alert in alerts %}
+                            <tr>
+                                <td>{{ alert.order_number }}</td>
+                                <td>{{ alert.policy_code }}</td>
+                                <td>{{ alert.email_to }}</td>
+                                <td>{{ alert.status }}</td>
+                                <td>{{ alert.sent_at | datetime_sp }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center">Nenhum alerta registrado.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
     </div>
 </main>
 {% endblock %}

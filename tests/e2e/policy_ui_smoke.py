@@ -25,7 +25,8 @@ def main() -> None:
         assert page.locator("img.brand-logo-img").count() == 0
 
         login_text = page.locator("body").inner_text()
-        assert "Sistema de Alertas ERP" in login_text
+        assert "Alertas de Pedidos" in login_text
+        assert "Sistema de Alertas ERP" not in login_text
         assert "cagoete" not in login_text.lower()
 
         page.locator("input[name='email']").fill("admin@empresa.com")

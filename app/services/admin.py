@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -96,7 +96,7 @@ class AdminService:
         )
         return list(self.db.scalars(statement))
 
-    def get_online_log_lines(self, limit: int = 10) -> list[str]:
+    def get_online_log_lines(self, limit: int = 15) -> list[str]:
         log_candidates = [
             BASE_DIR / "Cagoete.runtime.err.log",
             BASE_DIR / "Cagoete.runtime.log",
@@ -109,6 +109,9 @@ class AdminService:
                 continue
             entries.extend(self._read_log_entries(path))
 
+        if not entries:
+            return []
+
         entries.sort(key=lambda item: item[0])
         return [line for _, line in entries[-limit:]]
 
@@ -119,10 +122,26 @@ class AdminService:
 
     def _read_log_entries(self, path: Path) -> list[tuple[datetime, str]]:
         entries: list[tuple[datetime, str]] = []
-        for raw_line in self._read_last_lines(path, 200):
+        raw_lines = self._read_last_lines(path, 200)
+        try:
+            base_ts = datetime.fromtimestamp(path.stat().st_mtime)
+        except OSError:
+            base_ts = datetime.now()
+
+        base_tz = self._ensure_tz(base_ts).replace(microsecond=0)
+
+        for idx, raw_line in enumerate(raw_lines):
+            line = raw_line.strip()
+            if not line:
+                continue
             parsed = self._parse_log_line(raw_line)
             if parsed is not None:
                 entries.append(parsed)
+                continue
+            synthetic = base_tz.replace() + timedelta(microseconds=idx * 1000)
+            synthetic_tz = self._ensure_tz(synthetic)
+            stamp = self._format_for_ui(synthetic_tz)
+            entries.append((synthetic_tz, f"[{stamp}] {line}"))
         return entries
 
     def _parse_log_line(self, raw_line: str) -> tuple[datetime, str] | None:
